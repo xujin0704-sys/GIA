@@ -248,6 +248,28 @@ export const smartSearchKnowledge = async (query: string, experiences: any[]) =>
   }
 };
 
+export const generateDailySummary = async (content: string): Promise<string> => {
+  const prompt = `
+    请根据以下日报内容，生成一句简短精炼的总结（15字以内），仅总结今日的核心进展，不要包含明日计划。
+    
+    日报内容：
+    ${content}
+    
+    请直接返回总结文本，不要包含任何额外解释或标点符号（如引号）。
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+    });
+    return response.text?.trim() || '';
+  } catch (error) {
+    console.error('Failed to generate summary:', error);
+    return '';
+  }
+};
+
 /**
  * Performs a deep risk assessment for a specific goal.
  */

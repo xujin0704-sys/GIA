@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { Goal, GoalStatus, GoalType, ActionItem, GoalCategory, UserRoleType } from '../types';
+import { MOCK_REPORTS } from '../constants';
 import { 
   ChevronRight, 
   ArrowRight, 
@@ -79,6 +80,16 @@ const TIMESHEET_FIELDS = [
   { id: 'hours', label: '工时(h)', default: true },
 ];
 
+const EXPORT_FIELDS = [
+  { id: 'date', label: '日期', default: true },
+  { id: 'userName', label: '填报人', default: true },
+  { id: 'role', label: '角色', default: true },
+  { id: 'goalName', label: '关联目标', default: true },
+  { id: 'hours', label: '投入工时(h)', default: true },
+  { id: 'content', label: '执行内容', default: false },
+  { id: 'summary', label: '一句话总结', default: true },
+];
+
 const GoalGraph: React.FC<GoalGraphProps> = ({ role, goals, setGoals, allGoals, activeCycle }) => {
   const isManager = role === UserRoleType.TEAM_LEAD || role === UserRoleType.DEPT_HEAD || role === UserRoleType.SUPER_ADMIN;
   
@@ -88,10 +99,9 @@ const GoalGraph: React.FC<GoalGraphProps> = ({ role, goals, setGoals, allGoals, 
 
   // 导出相关状态
   const [showExportModal, setShowExportModal] = useState(false);
-  const [exportStep, setExportStep] = useState<'mode' | 'config'>('mode');
-  const [selectedExportMode, setSelectedExportMode] = useState<'meeting' | 'timesheet' | null>(null);
-  const [selectedExportFields, setSelectedExportFields] = useState<string[]>([]);
-  const [exportFilterMode, setExportFilterMode] = useState<'all' | 'risk_only'>('all');
+  const [exportStartDate, setExportStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [exportEndDate, setExportEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [exportFields, setExportFields] = useState<Set<string>>(new Set(EXPORT_FIELDS.filter(f => f.default).map(f => f.id)));
 
   const filteredGoals = goals.filter(g => {
     if (role === UserRoleType.EMPLOYEE) return g.type === GoalType.INDIVIDUAL || g.id === 'goal-map-1';
@@ -245,81 +255,36 @@ const GoalGraph: React.FC<GoalGraphProps> = ({ role, goals, setGoals, allGoals, 
   // 导出逻辑
   const csvEscape = (val: string) => `"${(val || '').replace(/"/g, '""')}"`;
 
-  const openExportConfig = (mode: 'meeting' | 'timesheet') => {
-    setSelectedExportMode(mode);
-    const defaults = mode === 'meeting' 
-      ? MEETING_FIELDS.filter(f => f.default).map(f => f.id)
-      : TIMESHEET_FIELDS.filter(f => f.default).map(f => f.id);
-    setSelectedExportFields(defaults);
-    setExportStep('config');
-  };
-
-  const resetExportFields = () => {
-    if (!selectedExportMode) return;
-    const defaults = selectedExportMode === 'meeting' 
-      ? MEETING_FIELDS.filter(f => f.default).map(f => f.id)
-      : TIMESHEET_FIELDS.filter(f => f.default).map(f => f.id);
-    setSelectedExportFields(defaults);
-  };
-
-  const toggleExportField = (fieldId: string) => {
-    setSelectedExportFields(prev => 
-      prev.includes(fieldId) ? prev.filter(id => id !== fieldId) : [...prev, fieldId]
-    );
-  };
-
   const handleExportExecute = () => {
-    if (!selectedExportMode) return;
-    
     let content = "\uFEFF"; // BOM for Excel
-    const fields = selectedExportMode === 'meeting' ? MEETING_FIELDS : TIMESHEET_FIELDS;
-    const activeFields = fields.filter(f => selectedExportFields.includes(f.id));
     
     // Header
-    content += activeFields.map(f => csvEscape(f.label)).join(",") + "\n";
+    const activeFields = EXPORT_FIELDS.filter(f => exportFields.has(f.id));
+    content += activeFields.map(f => f.label).join(",") + "\n";
 
     // Filter Data
-    const dataToExport = exportFilterMode === 'risk_only' 
-      ? filteredGoals.filter(g => g.status !== GoalStatus.STABLE) 
-      : filteredGoals;
+    const dataToExport = MOCK_REPORTS.filter(r => r.date >= exportStartDate && r.date <= exportEndDate);
 
     // Rows
-    if (selectedExportMode === 'meeting') {
-      dataToExport.forEach(g => {
-        const row = activeFields.map(f => {
-          if (f.id === 'name') return csvEscape(g.name);
-          if (f.id === 'type') return csvEscape(g.type);
-          if (f.id === 'owner') return csvEscape(g.owner);
-          if (f.id === 'progress') return csvEscape(`${g.progress}%`);
-          if (f.id === 'status') return csvEscape(g.status);
-          if (f.id === 'aiProb') return csvEscape(`${getAIProbability(g)}%`);
-          if (f.id === 'risk') return csvEscape(g.status === GoalStatus.HIGH_RISK ? '资源依赖阻塞' : '正常');
-          if (f.id === 'category') return csvEscape(g.category);
-          if (f.id === 'startDate') return csvEscape(g.startDate || '--');
-          if (f.id === 'endDate') return csvEscape(g.endDate || '--');
-          return '""';
+    dataToExport.forEach(report => {
+      report.segments.forEach(segment => {
+        const row = activeFields.map(field => {
+          switch (field.id) {
+            case 'date': return csvEscape(report.date);
+            case 'userName': return csvEscape(report.userName);
+            case 'role': return csvEscape(report.role);
+            case 'goalName': return csvEscape(segment.goalName);
+            case 'hours': return csvEscape(segment.hours.toString());
+            case 'content': return csvEscape(segment.content);
+            case 'summary': return csvEscape(segment.summary || segment.content);
+            default: return '""';
+          }
         });
         content += row.join(",") + "\n";
       });
-    } else {
-      dataToExport.forEach(g => {
-        const items = g.actionItems.length > 0 ? g.actionItems : [{ text: '常规跟进', startDate: '2026-05-20' }];
-        items.forEach(ai => {
-          const row = activeFields.map(f => {
-            if (f.id === 'date') return csvEscape(ai.startDate || '2026-05-20');
-            if (f.id === 'name') return csvEscape(g.name);
-            if (f.id === 'category') return csvEscape(g.category);
-            if (f.id === 'action') return csvEscape(ai.text);
-            if (f.id === 'owner') return csvEscape(g.owner);
-            if (f.id === 'hours') return csvEscape('8');
-            return '""';
-          });
-          content += row.join(",") + "\n";
-        });
-      });
-    }
+    });
 
-    const filename = `GIA_${selectedExportMode === 'meeting' ? '经分会汇报' : '工时系统对齐'}_${activeCycle}_${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = `GIA_工时明细_${exportStartDate}_至_${exportEndDate}.csv`;
     const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
@@ -332,7 +297,6 @@ const GoalGraph: React.FC<GoalGraphProps> = ({ role, goals, setGoals, allGoals, 
 
     // Close Modal
     setShowExportModal(false);
-    setExportStep('mode');
   };
 
   const addActionItem = () => {
@@ -417,10 +381,6 @@ const GoalGraph: React.FC<GoalGraphProps> = ({ role, goals, setGoals, allGoals, 
     });
   };
 
-  const currentExportCount = exportFilterMode === 'risk_only' 
-    ? filteredGoals.filter(g => g.status !== GoalStatus.STABLE).length 
-    : filteredGoals.length;
-
   return (
     <div className="flex flex-col h-full gap-6 animate-in fade-in duration-700">
       {/* 顶部标题栏 */}
@@ -448,10 +408,10 @@ const GoalGraph: React.FC<GoalGraphProps> = ({ role, goals, setGoals, allGoals, 
         
         <div className="flex items-center gap-4">
           <button 
-            onClick={() => { setShowExportModal(true); setExportStep('mode'); }}
+            onClick={() => setShowExportModal(true)}
             className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white text-xs font-black uppercase rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 tracking-wider"
           >
-            <Download size={14} /> 一键导出报表
+            <Download size={14} /> 一键导出工时
           </button>
           {viewMode === 'list' && (
             <div className="relative">
@@ -935,144 +895,102 @@ const GoalGraph: React.FC<GoalGraphProps> = ({ role, goals, setGoals, allGoals, 
             <div className="bg-indigo-600 p-8 text-white flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-md">
-                  {exportStep === 'mode' ? <Download size={24} /> : <Settings size={24} />}
+                  <Clock size={24} />
                 </div>
                 <div>
                   <h3 className="text-xl font-black tracking-tight">
-                    {exportStep === 'mode' ? '选择报表导出模式' : '配置导出字段与内容'}
+                    导出工时明细
                   </h3>
                   <p className="text-[10px] text-white/70 font-bold uppercase tracking-widest mt-0.5">
-                    {exportStep === 'mode' ? '战略目标全域空间同步' : `正在配置 ${selectedExportMode === 'meeting' ? '经分会' : '工时'} 模版`}
+                    导出智能执行中填写的日报工时数据
                   </p>
                 </div>
               </div>
               <button onClick={() => setShowExportModal(false)} className="w-10 h-10 flex items-center justify-center hover:bg-white/10 rounded-2xl transition-all"><X size={24} /></button>
             </div>
             
-            <div className="p-8 space-y-4">
-              {exportStep === 'mode' ? (
-                <div className="space-y-4">
-                  <button 
-                    onClick={() => openExportConfig('meeting')}
-                    className="w-full p-6 bg-slate-50 border border-slate-100 rounded-[2rem] flex items-center gap-6 hover:border-indigo-300 hover:bg-indigo-50/50 hover:shadow-lg hover:shadow-indigo-50 transition-all group text-left"
-                  >
-                    <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm group-hover:scale-110 transition-transform">
-                      <FileText size={32} />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="text-base font-black text-slate-900 mb-1">经分会周报模版</h4>
-                      <p className="text-xs text-slate-500 font-medium leading-relaxed italic">
-                        包含目标状态、AI达成概率及风险说明，直接适配周/月度会议决策。
-                      </p>
-                    </div>
-                    <ArrowUpRight size={20} className="text-slate-300 group-hover:text-indigo-600 transition-colors" />
-                  </button>
-
-                  <button 
-                    onClick={() => openExportConfig('timesheet')}
-                    className="w-full p-6 bg-slate-50 border border-slate-100 rounded-[2rem] flex items-center gap-6 hover:border-emerald-300 hover:bg-emerald-50/50 hover:shadow-lg hover:shadow-emerald-50 transition-all group text-left"
-                  >
-                    <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-emerald-600 shadow-sm group-hover:scale-110 transition-transform">
-                      <Clock size={32} />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="text-base font-black text-slate-900 mb-1">工时系统对齐模版</h4>
-                      <p className="text-xs text-slate-500 font-medium leading-relaxed italic">
-                        将里程碑执行动作转化为工时日志，适配财务核算与项目工时同步。
-                      </p>
-                    </div>
-                    <ArrowUpRight size={20} className="text-slate-300 group-hover:text-emerald-600 transition-colors" />
-                  </button>
+            <div className="p-8 space-y-6">
+              <section>
+                <div className="flex items-center gap-2 mb-4 text-slate-400">
+                  <Calendar size={14} />
+                  <span className="text-[10px] font-black uppercase tracking-widest">选择时间区间</span>
                 </div>
-              ) : (
-                <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-                  <section>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2 text-slate-400">
-                        <List size={14} />
-                        <span className="text-[10px] font-black uppercase tracking-widest">选择导出字段</span>
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">开始日期</label>
+                    <input 
+                      type="date" 
+                      value={exportStartDate}
+                      onChange={(e) => setExportStartDate(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all cursor-pointer"
+                    />
+                  </div>
+                  <div className="text-slate-300 mt-6"><ArrowRight size={16} /></div>
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">结束日期</label>
+                    <input 
+                      type="date" 
+                      value={exportEndDate}
+                      onChange={(e) => setExportEndDate(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </section>
+              
+              <section>
+                <div className="flex items-center gap-2 mb-4 text-slate-400">
+                  <List size={14} />
+                  <span className="text-[10px] font-black uppercase tracking-widest">选择导出字段</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {EXPORT_FIELDS.map(field => (
+                    <label key={field.id} className={`flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition-all ${exportFields.has(field.id) ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
+                      <div className={`w-4 h-4 rounded flex items-center justify-center border ${exportFields.has(field.id) ? 'bg-indigo-500 border-indigo-500 text-white' : 'bg-white border-slate-300'}`}>
+                        {exportFields.has(field.id) && <Check size={12} strokeWidth={3} />}
                       </div>
-                      <button onClick={resetExportFields} className="flex items-center gap-1.5 text-[10px] font-black text-indigo-600 uppercase hover:underline">
-                        <RotateCcw size={12} /> 重置默认
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      {(selectedExportMode === 'meeting' ? MEETING_FIELDS : TIMESHEET_FIELDS).map(f => (
-                        <button
-                          key={f.id}
-                          onClick={() => toggleExportField(f.id)}
-                          className={`flex items-center justify-between p-4 rounded-2xl border text-xs font-bold transition-all ${
-                            selectedExportFields.includes(f.id) 
-                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-100' 
-                              : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-200'
-                          }`}
-                        >
-                          {f.label}
-                          {selectedExportFields.includes(f.id) && <Check size={14} />}
-                        </button>
-                      ))}
-                    </div>
-                  </section>
-
-                  <section>
-                    <div className="flex items-center gap-2 mb-4 text-slate-400">
-                      <Filter size={14} />
-                      <span className="text-[10px] font-black uppercase tracking-widest">数据过滤范围</span>
-                    </div>
-                    <div className="flex gap-4">
-                      <button 
-                        onClick={() => setExportFilterMode('all')}
-                        className={`flex-1 py-4 px-4 rounded-2xl border text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-                          exportFilterMode === 'all' 
-                            ? 'bg-slate-900 text-white border-slate-900 shadow-lg' 
-                            : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
-                        }`}
-                      >
-                        <Network size={14} /> 全量目标 ({filteredGoals.length})
-                      </button>
-                      <button 
-                        onClick={() => setExportFilterMode('risk_only')}
-                        className={`flex-1 py-4 px-4 rounded-2xl border text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-                          exportFilterMode === 'risk_only' 
-                            ? 'bg-rose-600 text-white border-rose-600 shadow-lg' 
-                            : 'bg-white text-slate-500 border-slate-200 hover:bg-rose-50'
-                        }`}
-                      >
-                        <AlertTriangle size={14} /> 仅风险目标 ({filteredGoals.filter(g => g.status !== GoalStatus.STABLE).length})
-                      </button>
-                    </div>
-                  </section>
+                      <span className="text-xs font-bold">{field.label}</span>
+                      <input 
+                        type="checkbox" 
+                        className="hidden"
+                        checked={exportFields.has(field.id)}
+                        onChange={() => {
+                          setExportFields(prev => {
+                            const next = new Set(prev);
+                            if (next.has(field.id)) next.delete(field.id);
+                            else next.add(field.id);
+                            return next;
+                          });
+                        }}
+                      />
+                    </label>
+                  ))}
                 </div>
-              )}
+              </section>
+              
+              <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100 flex items-start gap-3">
+                <div className="mt-0.5 text-indigo-500"><FileText size={16} /></div>
+                <div>
+                  <p className="text-xs font-bold text-indigo-900 mb-1">导出内容说明</p>
+                  <p className="text-[10px] font-medium text-indigo-700/80 leading-relaxed">
+                    将导出指定日期范围内，团队成员在“智能执行”模块中填写的日报数据，包含您选择的字段。
+                  </p>
+                </div>
+              </div>
             </div>
 
-            <div className="p-8 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-              {exportStep === 'config' ? (
-                <button 
-                  onClick={() => setExportStep('mode')}
-                  className="text-xs font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 transition-colors"
-                >
-                  返回上一步
-                </button>
-              ) : (
-                <div className="flex-1" />
-              )}
-              
-              <div className="flex items-center gap-4">
-                <button onClick={() => setShowExportModal(false)} className="px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100">取消</button>
-                {exportStep === 'config' && (
-                  <button 
-                    onClick={handleExportExecute}
-                    className="px-10 py-3 bg-indigo-600 text-white shadow-xl shadow-indigo-100 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition-all flex items-center gap-2"
-                  >
-                    <Download size={14} /> 确认导出 {currentExportCount} 条记录
-                  </button>
-                )}
-              </div>
+            <div className="p-8 bg-slate-50 border-t border-slate-100 flex items-center justify-end">
+              <button 
+                onClick={handleExportExecute}
+                className="flex items-center gap-2 px-8 py-4 bg-indigo-600 text-white text-xs font-black uppercase rounded-2xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100"
+              >
+                <Download size={16} /> 确认导出 CSV
+              </button>
             </div>
           </div>
         </div>
       )}
+
 
       {/* 弹窗部分 */}
       {isModalOpen && editingGoal && (

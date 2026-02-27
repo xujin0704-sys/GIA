@@ -1,25 +1,30 @@
-import { Goal, GoalType, GoalStatus, SupportProject, GoalCategory } from './types';
+import { Goal, GoalType, GoalStatus, SupportProject, GoalCategory, PRDVersion } from './types';
 
-export const MOCK_PERIOD_SUMMARIES: Record<string, { completion: string; risk: string }> = {
+export const MOCK_PERIOD_SUMMARIES: Record<string, { completion: string; risk: string; special: string }> = {
   '日': {
     completion: '今日整体目标推进平稳。自动化生产平台资料管理模块已完成今日灰度测试用例，台湾地图新北板桥区POI采集进度达80%。',
-    risk: '台湾新北地区受天气影响，明日采集进度可能受阻；实时情感分析Kafka堆积问题尚未解决，存在较高风险。'
+    risk: '台湾新北地区受天气影响，明日采集进度可能受阻；实时情感分析Kafka堆积问题尚未解决，存在较高风险。',
+    special: '【专项】物流事业部武汉样板间今日完成数据清洗，进入入库阶段；【跨事业部】出行事业部接口联调已通过初测。'
   },
   '周': {
     completion: '本周核心战略目标稳步推进。物流特色数据共建闭环已完成武汉/深圳样板间建设方案评审。',
-    risk: '商业化变现目标仍有20%缺口，需重点关注；部分偏远地区地图采集难度超预期。'
+    risk: '商业化变现目标仍有20%缺口，需重点关注；部分偏远地区地图采集难度超预期。',
+    special: '【专项】七大专题库本周完成模型初稿；【跨事业部】本地生活室内外一体化导航POC方案已提交评审。'
   },
   '月': {
     completion: '本月自动化生产平台资料管理模块稳定运行，七大专题库建设进度达30%。',
-    risk: 'AI系统灰度进度略有延迟，需加派人手；部分历史数据清洗难度较大，可能影响后续专题库建设。'
+    risk: 'AI系统灰度进度略有延迟，需加派人手；部分历史数据清洗难度较大，可能影响后续专题库建设。',
+    special: '【专项】物流特色数据共建已覆盖15个核心城市；【跨事业部】完成与物流事业部冷链运输路线规划的需求首轮对齐。'
   },
   '季': {
     completion: 'Q2季度整体加权达成率72.5%。台湾地图重点城市覆盖预计可达100%，物流样板间建设进入正式交付阶段。',
-    risk: '企服商业化变现进度落后，需在Q2最后一个月冲刺；自动化生产降本增效指标距离目标仍有差距。'
+    risk: '企服商业化变现进度落后，需在Q2最后一个月冲刺；自动化生产降本增效指标距离目标仍有差距。',
+    special: '【专项】物流专题地图已完成150城覆盖，下季度目标300城；【跨事业部】三大外部事业部支撑项目均进入交付/POC关键期。'
   },
   '年': {
     completion: '年度战略主线“自动化生产与AI运营体系”初具雏形，物流特色数据共建闭环生态稳步推进。',
-    risk: '核心算法迭代速度需加快，以应对不断变化的市场需求；需建立常态化数据更新机制以保证数据鲜活度。'
+    risk: '核心算法迭代速度需加快，以应对不断变化的市场需求；需建立常态化数据更新机制以保证数据鲜活度。',
+    special: '【专项】年度物流特色数据生态基本闭环；【跨事业部】全年支撑外部BU价值产出预计超500万。'
   }
 };
 
@@ -311,8 +316,8 @@ export const MOCK_REPORTS = [
     totalHours: 8,
     status: 'STABLE',
     segments: [
-      { goalName: '台湾地图 Q2 重点城市覆盖', hours: 5, content: '完成台北信义区 500 个 POI 的坐标校对，模型匹配度 95%。' },
-      { goalName: '自动化生产演进', hours: 3, content: '参与自动化流水线灰度测试，反馈了 2 个标注工具的逻辑 Bug。' }
+      { goalName: '台湾地图 Q2 重点城市覆盖', hours: 5, content: '完成台北信义区 500 个 POI 的坐标校对，模型匹配度 95%。', summary: '完成台北信义区POI校对，明日继续其他区域。' },
+      { goalName: '自动化生产演进', hours: 3, content: '参与自动化流水线灰度测试，反馈了 2 个标注工具的逻辑 Bug。', summary: '参与灰度测试并反馈Bug，明日跟进修复进度。' }
     ]
   },
   {
@@ -323,7 +328,7 @@ export const MOCK_REPORTS = [
     totalHours: 8,
     status: 'HIGH_RISK',
     segments: [
-      { goalName: '实时情感分析', hours: 8, content: '全天排查分布式计算延迟问题。目前 Kafka 堆积严重，依赖的基础设施组未响应，导致进度完全停滞。' }
+      { goalName: '实时情感分析', hours: 8, content: '全天排查分布式计算延迟问题。目前 Kafka 堆积严重，依赖的基础设施组未响应，导致进度完全停滞。', summary: '排查Kafka堆积问题受阻，明日需升级协调基础设施组。' }
     ]
   },
   {
@@ -334,8 +339,8 @@ export const MOCK_REPORTS = [
     totalHours: 9,
     status: 'DEVIATED',
     segments: [
-      { goalName: '小组管理与协调', hours: 4, content: '组织双周进度对齐会。发现商业化变现目标在 Q2 尾声仍有 20% 缺口。' },
-      { goalName: '企服商业化变现', hours: 5, content: '拜访物流 BU 核心架构师，探讨“上门入户点”API 的阶梯计价方案。' }
+      { goalName: '小组管理与协调', hours: 4, content: '组织双周进度对齐会。发现商业化变现目标在 Q2 尾声仍有 20% 缺口。', summary: '组织双周会，发现商业化目标缺口，明日制定冲刺计划。' },
+      { goalName: '企服商业化变现', hours: 5, content: '拜访物流 BU 核心架构师，探讨“上门入户点”API 的阶梯计价方案。', summary: '与物流BU探讨API计价方案，明日输出初步报价单。' }
     ]
   },
   {
@@ -346,8 +351,8 @@ export const MOCK_REPORTS = [
     totalHours: 8,
     status: 'STABLE',
     segments: [
-      { goalName: '部门战略对齐', hours: 4, content: '审核 Q3 核心主线预算分配，对齐事业部价值指标。' },
-      { goalName: '自动化生产与AI运营体系', hours: 4, content: '深度评估标注平台 V2.0 架构方案。' }
+      { goalName: '部门战略对齐', hours: 4, content: '审核 Q3 核心主线预算分配，对齐事业部价值指标。', summary: '审核Q3预算，明日向高层汇报。' },
+      { goalName: '自动化生产与AI运营体系', hours: 4, content: '深度评估标注平台 V2.0 架构方案。', summary: '评估标注平台架构，明日组织技术评审。' }
     ]
   }
 ];
@@ -368,7 +373,7 @@ export const MOCK_EXPERIENCES = [
   }
 ];
 
-export const MOCK_PRD_VERSIONS = [
+export const MOCK_PRD_VERSIONS: PRDVersion[] = [
   {
     id: 'v1.5',
     version: 'V1.5',

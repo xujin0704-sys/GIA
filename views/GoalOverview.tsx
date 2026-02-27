@@ -25,7 +25,8 @@ import {
   RotateCcw,
   AlertTriangle,
   Sparkles,
-  Briefcase
+  Briefcase,
+  Zap
 } from 'lucide-react';
 
 const MEETING_FIELDS = [
@@ -201,7 +202,8 @@ const GoalOverview: React.FC<{role: UserRoleType, goals: Goal[], activeCycle: st
       // 1. 总体目标概览
       content += `一、总体目标概览 (${viewPeriod}度)\n`;
       content += `完成情况: ${MOCK_PERIOD_SUMMARIES[viewPeriod]?.completion || ''}\n`;
-      content += `风险说明: ${MOCK_PERIOD_SUMMARIES[viewPeriod]?.risk || ''}\n\n`;
+      content += `风险说明: ${MOCK_PERIOD_SUMMARIES[viewPeriod]?.risk || ''}\n`;
+      content += `重点专项总结: ${MOCK_PERIOD_SUMMARIES[viewPeriod]?.special || ''}\n\n`;
 
       // 2. 目标执行明细
       content += `二、目标执行明细\n`;
@@ -257,6 +259,32 @@ const GoalOverview: React.FC<{role: UserRoleType, goals: Goal[], activeCycle: st
         });
         content += row.join(",") + "\n";
       });
+      content += "\n";
+
+      // 4. 重点专项与跨事业部支撑明细
+      content += `四、重点专项与跨事业部支撑明细 (专项标签/跨BU)\n`;
+      const specialGoals = goalsToShow.filter(g => 
+        g.productLine === '专项' || 
+        g.category === GoalCategory.ORG_SPECIAL || 
+        (g.tags && g.tags.includes('专项'))
+      );
+      
+      if (specialGoals.length > 0) {
+        content += `模块,目标名称,负责人,当前进度,本${viewPeriod}进展,下${viewPeriod}计划\n`;
+        specialGoals.forEach(g => {
+          const row = [
+            csvEscape(g.productLine || ''),
+            csvEscape(g.name),
+            csvEscape(g.owner),
+            csvEscape(`${g.progress}%`),
+            csvEscape(g.periodSummaries?.[viewPeriod]?.progressAndRisk || ''),
+            csvEscape(g.periodSummaries?.[viewPeriod]?.nextGoal || '')
+          ];
+          content += row.join(",") + "\n";
+        });
+      } else {
+        content += "暂无符合条件的重点专项数据\n";
+      }
     } else {
       // Header
       content += activeFields.map(f => csvEscape(f.label)).join(",") + "\n";
@@ -425,7 +453,7 @@ const GoalOverview: React.FC<{role: UserRoleType, goals: Goal[], activeCycle: st
             <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600"><Sparkles size={16} /></div>
             <h3 className="text-base font-black text-slate-900">AI 智能总结 ({viewPeriod}度)</h3>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-white/80 backdrop-blur-sm p-5 rounded-2xl border border-indigo-50 shadow-sm">
               <div className="flex items-center gap-2 mb-3">
                 <CheckCircle2 size={16} className="text-emerald-500" />
@@ -442,6 +470,15 @@ const GoalOverview: React.FC<{role: UserRoleType, goals: Goal[], activeCycle: st
               </div>
               <p className="text-sm text-slate-600 leading-relaxed font-medium">
                 {MOCK_PERIOD_SUMMARIES[viewPeriod]?.risk}
+              </p>
+            </div>
+            <div className="bg-white/80 backdrop-blur-sm p-5 rounded-2xl border border-amber-50 shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <Zap size={16} className="text-amber-500" />
+                <span className="text-xs font-black text-slate-700 uppercase tracking-widest">重点专项总结</span>
+              </div>
+              <p className="text-sm text-slate-600 leading-relaxed font-medium">
+                {MOCK_PERIOD_SUMMARIES[viewPeriod]?.special}
               </p>
             </div>
           </div>

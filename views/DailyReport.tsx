@@ -10,7 +10,8 @@ import {
   Rocket, BrainCircuit, Lightbulb, Check
 } from 'lucide-react';
 import { MOCK_PLANS, MOCK_REPORTS } from '../constants';
-import { analyzeReportRisk, getSmartSuggestions, extractInsightFromDaily } from '../services/geminiService';
+import { analyzeReportRisk, getSmartSuggestions, extractInsightFromDaily, generateDailySummary } from '../services/geminiService';
+import GitStyleEditor from '../components/GitStyleEditor';
 
 interface DailyReportProps {
   role: UserRoleType;
@@ -26,10 +27,12 @@ interface ReportSegment {
   progress: number;
   content: string;
   nextPlan: string;
+  summary: string;
   suggestions: string[];
   isAnalyzing: boolean;
   analysis: RiskAnalysis | null;
   isExtracting: boolean;
+  isSummarizing?: boolean;
 }
 
 const MOCK_TIMESHEET_CODES = [
@@ -55,9 +58,9 @@ const DAILY_TEMPLATE = (projectName: string) => `### 专项：${projectName}攻�
 **今日认知/踩坑**：
 > [现象描述]
 > **教训**：[核心认知沉淀]
-`;
 
-const NEXT_PLAN_TEMPLATE = `1. [具体行动项]：预计达成[量化结果]
+#### 明日计划
+1. [具体行动项]：预计达成[量化结果]
 2. [协同/资源]：需要[某部门/人员]支持[某事项]
 `;
 
@@ -102,6 +105,7 @@ const DailyReport: React.FC<DailyReportProps> = ({ role, goals }) => {
       progress: defaultGoal?.progress || 0,
       content: '',
       nextPlan: '',
+      summary: '',
       suggestions: [],
       isAnalyzing: false,
       analysis: null,
@@ -148,8 +152,7 @@ const DailyReport: React.FC<DailyReportProps> = ({ role, goals }) => {
     const seg = segments.find(s => s.id === id);
     const goalName = goals.find(g => g.id === (seg?.goalId))?.name || '新项目';
     updateSegment(id, { 
-      content: DAILY_TEMPLATE(goalName),
-      nextPlan: NEXT_PLAN_TEMPLATE 
+      content: DAILY_TEMPLATE(goalName)
     });
   };
 
@@ -172,6 +175,25 @@ const DailyReport: React.FC<DailyReportProps> = ({ role, goals }) => {
       console.error(e);
     } finally {
       updateSegment(id, { isExtracting: false });
+    }
+  };
+
+  const handleGenerateSummary = async (id: string) => {
+    const seg = segments.find(s => s.id === id);
+    if (!seg || !seg.content.trim()) return;
+
+    updateSegment(id, { isSummarizing: true });
+    try {
+      const summary = await generateDailySummary(seg.content);
+      if (summary) {
+        updateSegment(id, { summary });
+      } else {
+        alert("AI 总结失败，请稍后重试。");
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      updateSegment(id, { isSummarizing: false });
     }
   };
 
@@ -425,54 +447,67 @@ const DailyReport: React.FC<DailyReportProps> = ({ role, goals }) => {
                        </div>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                       {/* 今日产出与沉淀 */}
-                       <div className="space-y-4">
-                          <div className="flex items-center justify-between">
-                            <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">1. 本日执行情况与认知沉淀</label>
+                    <div className="space-y-4">
+                       <div className="flex items-center justify-between">
+                         <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">1. 本日执行情况与认知沉淀</label>
+                         {!isExpired && (
+                           <div className="flex gap-2">
+                             <button 
+                               onClick={() => handleExtractInsight(seg.id)}
+                               disabled={!seg.content || seg.isExtracting}
+                               className={`text-[10px] font-black uppercase px-4 py-2 rounded-xl transition-all flex items-center gap-2 ${
+                                 !seg.content ? 'text-slate-300 bg-slate-50 cursor-not-allowed' : 'text-amber-600 bg-amber-50 hover:bg-amber-100 shadow-sm border border-amber-100'
+                               }`}
+                             >
+                               {seg.isExtracting ? <Loader2 size={14} className="animate-spin" /> : <BrainCircuit size={14} />}
+                               AI 提炼经验值
+                             </button>
+                             <button onClick={() => applyTemplateToSegment(seg.id)} className="text-[10px] font-black text-indigo-500 uppercase px-4 py-2 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-all flex items-center gap-2 shadow-sm border border-indigo-100">
+                               <ListChecks size={14} /> 载入结构化模版
+                             </button>
+                           </div>
+                         )}
+                       </div>
+                       <GitStyleEditor
+                         value={seg.content}
+                         disabled={isExpired}
+                         onChange={(val) => handleTextChange(seg.id, val)}
+                         placeholder={isExpired ? "该项目已截止，无法填报。" : "记录具体的交付细节、关键产出、认知升级，以及明日计划..."}
+                         className={`w-full bg-slate-50 border rounded-[2.5rem] shadow-inner ${isExpired ? 'border-rose-100 cursor-not-allowed' : 'border-slate-200 focus-within:ring-4 focus-within:ring-indigo-500/10'}`}
+                         minHeight="300px"
+                       />
+                    </div>
+
+                    {/* 一句话总结 */}
+                    <div className="space-y-4">
+                       <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-black text-emerald-600 uppercase tracking-widest ml-1 flex items-center gap-2">
+                            <CheckCircle2 size={14} /> 2. 一句话总结 (用于工时导出)
+                          </label>
+                          <div className="flex items-center gap-3">
+                            <div className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter">高度概括本日进展</div>
                             {!isExpired && (
-                              <div className="flex gap-2">
-                                <button 
-                                  onClick={() => handleExtractInsight(seg.id)}
-                                  disabled={!seg.content || seg.isExtracting}
-                                  className={`text-[10px] font-black uppercase px-4 py-2 rounded-xl transition-all flex items-center gap-2 ${
-                                    !seg.content ? 'text-slate-300 bg-slate-50 cursor-not-allowed' : 'text-amber-600 bg-amber-50 hover:bg-amber-100 shadow-sm border border-amber-100'
-                                  }`}
-                                >
-                                  {seg.isExtracting ? <Loader2 size={14} className="animate-spin" /> : <BrainCircuit size={14} />}
-                                  AI 提炼经验值
-                                </button>
-                                <button onClick={() => applyTemplateToSegment(seg.id)} className="text-[10px] font-black text-indigo-500 uppercase px-4 py-2 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-all flex items-center gap-2 shadow-sm border border-indigo-100">
-                                  <ListChecks size={14} /> 载入结构化模版
-                                </button>
-                              </div>
+                              <button 
+                                onClick={() => handleGenerateSummary(seg.id)}
+                                disabled={!seg.content || seg.isSummarizing}
+                                className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                                  !seg.content ? 'text-slate-300 bg-slate-50 cursor-not-allowed' : 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100 shadow-sm border border-emerald-100'
+                                }`}
+                              >
+                                {seg.isSummarizing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                                AI 一键总结
+                              </button>
                             )}
                           </div>
-                          <textarea
-                            value={seg.content}
-                            disabled={isExpired}
-                            onChange={(e) => handleTextChange(seg.id, e.target.value)}
-                            placeholder={isExpired ? "该项目已截止，无法填报。" : "记录具体的交付细节、关键产出、认知升级..."}
-                            className={`w-full h-56 bg-slate-50 border rounded-[2.5rem] px-8 py-8 text-sm font-medium outline-none focus:ring-4 transition-all resize-none leading-relaxed ${isExpired ? 'border-rose-100 cursor-not-allowed' : 'border-slate-200 focus:ring-indigo-500/10 shadow-inner'}`}
-                          />
                        </div>
-
-                       {/* 明日计划 */}
-                       <div className="space-y-4">
-                          <div className="flex items-center justify-between">
-                             <label className="text-[11px] font-black text-indigo-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                               <Rocket size={14} /> 2. 后续执行与明日计划 (Next Steps)
-                             </label>
-                             <div className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter">明确下一步关键行动项</div>
-                          </div>
-                          <textarea
-                            value={seg.nextPlan}
-                            disabled={isExpired}
-                            onChange={(e) => updateSegment(seg.id, { nextPlan: e.target.value })}
-                            placeholder={isExpired ? "该项目已截止。" : "描述针对该目标的明日具体执行计划、待协调资源、预期达成点..."}
-                            className={`w-full h-56 bg-white border rounded-[2.5rem] px-8 py-8 text-sm font-medium outline-none focus:ring-4 transition-all resize-none leading-relaxed ${isExpired ? 'border-rose-50 cursor-not-allowed opacity-50' : 'border-indigo-100 focus:ring-indigo-500/10 shadow-lg shadow-indigo-50/20'}`}
-                          />
-                       </div>
+                       <input
+                         type="text"
+                         value={seg.summary}
+                         disabled={isExpired}
+                         onChange={(e) => updateSegment(seg.id, { summary: e.target.value })}
+                         placeholder={isExpired ? "该项目已截止。" : "例如：完成核心模块开发，模型匹配度达到 95%。"}
+                         className={`w-full bg-white border-2 rounded-2xl px-6 py-4 text-sm font-bold outline-none transition-all ${isExpired ? 'border-rose-50 cursor-not-allowed opacity-50' : 'border-emerald-100 focus:ring-4 focus:ring-emerald-500/10 shadow-sm text-emerald-900 placeholder:text-emerald-200'}`}
+                       />
                     </div>
                   </div>
 
